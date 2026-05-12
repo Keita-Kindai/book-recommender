@@ -1,3 +1,10 @@
+"""
+ここではGradioを使って実際に画面に書籍の推薦をするアプリケーションを作成します。
+使うテキストファイル（csvファイル）は
+- tagged_description.txt -> ISBNと書籍の説明が載ったもの。これをベクトルデータベースに登録する
+- books_with_emotions.csv -> 前処理が完全に終わったデータセットで、感情ごとのおすすめやカテゴリの表示はこれを使って調整する
+になっています。
+"""
 import pandas as pd
 import numpy as np
 from dotenv import load_dotenv
@@ -12,7 +19,7 @@ from rich import theme
 
 load_dotenv()
 
-books = pd.read_csv("books_with_emotions.csv")
+books = pd.read_csv("datasets/books_with_emotions.csv")
 books["large_thumbnail"] = books["thumbnail"] + "&file=w800"
 books["large_thumbnail"] = np.where(
     books["large_thumbnail"].isna(),
@@ -20,11 +27,22 @@ books["large_thumbnail"] = np.where(
     books["large_thumbnail"],
 )
 
-raw_documents = TextLoader("tagged_description.txt").load()
+# ベクトルデータベースに登録。
+raw_documents = TextLoader("datasets/tagged_description.txt").load()
 text_splitter = CharacterTextSplitter(separator="\n", chunk_size=1000, chunk_overlap=0)
 documents = text_splitter.split_documents(raw_documents)
 db_books = Chroma.from_documents(documents, OpenAIEmbeddings())
 
+"""
+    @:param query（説明文）
+    @:param category カテゴリ
+    @:param tone 感情
+    @:param initial_top_k 初期段階で表示する書籍の数
+    @:param final_top_k 最後の段階で表示する書籍の数
+    
+    条件を絞ってデータセットから適切な（要望に近い）書籍の一覧を取得します。
+    感情に指定があった場合、得たデータセットの感情の確率で降順にソートしてからデータセットを返します。
+"""
 def retrieve_semantic_recommendations(
         query: str,
         category: str = None,
@@ -55,6 +73,13 @@ def retrieve_semantic_recommendations(
 
     return book_recs
 
+"""
+    @:param query 検索文章
+    @:param category カテゴリ
+    @:param tone 感情
+    
+    データベースからの取得は上の関数に任せて、こちらの方では主に画面に何を表示するのかを指定します。
+"""
 def recommend_books(
         query: str,
         category: str,
@@ -80,9 +105,11 @@ def recommend_books(
         results.append((row["large_thumbnail"], caption))
     return results
 
+# カテゴリと感情一覧の作成
 categories = ["All"] + sorted(books["simple_categories"].unique())
 tones = ["All"] + ["Happy", "Surprising", "Angry", "Suspenseful", "Sad"]
 
+# 表示する内容の作成
 with gr.Blocks(theme = gr.themes.Soft()) as dashboard:
     gr.Markdown("# Semantic book recommender")
 
